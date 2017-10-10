@@ -11,19 +11,23 @@ use xrl::{Client, ClientResult, Frontend, FrontendBuilder, ScrollTo, ServerResul
 use errors::*;
 use terminal::{Terminal, TerminalEvent};
 use view::{View, ViewClient};
+use status_bar::StatusBar;
+use mode::Mode;
 
 pub struct Tui {
-    pub pending_open_requests: Vec<ClientResult<(String, View)>>,
-    pub delayed_events: Vec<CoreEvent>,
-    pub views: HashMap<String, View>,
-    pub current_view: String,
-    pub events: UnboundedReceiver<CoreEvent>,
-    pub handle: Handle,
-    pub client: Client,
-    pub term: Terminal,
-    pub term_size: (u16, u16),
-    pub shutdown: bool,
-    pub styles: HashMap<u64, Style>,
+    pending_open_requests: Vec<ClientResult<(String, View)>>,
+    delayed_events: Vec<CoreEvent>,
+    views: HashMap<String, View>,
+    current_view: String,
+    events: UnboundedReceiver<CoreEvent>,
+    handle: Handle,
+    client: Client,
+    term: Terminal,
+    term_size: (u16, u16),
+    shutdown: bool,
+    styles: HashMap<u64, Style>,
+    status_bar: StatusBar,
+    mode: Mode,
 }
 
 impl Tui {
@@ -47,6 +51,8 @@ impl Tui {
             current_view: "".into(),
             client: client,
             shutdown: false,
+            status_bar: StatusBar::new(),
+            mode: Mode::Insert,
         })
     }
 
@@ -87,17 +93,19 @@ impl Tui {
     }
 
     fn handle_resize(&mut self, size: (u16, u16)) {
-        let Tui {
-            ref mut views,
-            ref current_view,
-            ..
-        } = *self;
         info!("setting new terminal size");
         self.term_size = size;
-        if let Some(view) = views.get_mut(current_view) {
-            view.resize(size.1);
+        let view_size = self.get_view_size();
+        if let Some(view) = self.views.get_mut(&self.current_view) {
+            view.resize(view_size);
+        }
+    }
+
+    fn get_view_size(&self) -> u16 {
+        if self.term_size.1 < 3 {
+            0
         } else {
-            warn!("view {} not found", current_view);
+            self.term_size.1 - 2
         }
     }
 
@@ -141,17 +149,15 @@ impl Tui {
             ref mut pending_open_requests,
             ref mut views,
             ref mut current_view,
-            ref term_size,
             ..
         } = *self;
 
         let mut done = vec![];
         for (idx, task) in pending_open_requests.iter_mut().enumerate() {
             match task.poll() {
-                Ok(Async::Ready((id, mut view))) => {
+                Ok(Async::Ready((id, view))) => {
                     info!("open request succeeded for {}", &id);
                     done.push(idx);
-                    view.resize(term_size.1);
                     views.insert(id.clone(), view);
                     *current_view = id;
                 }
@@ -223,20 +229,42 @@ impl Tui {
     }
 
     fn render(&mut self) -> Result<()> {
-        let Tui {
-            ref mut views,
-            ref mut term,
-            ref current_view,
-            ref styles,
-            ..
-        } = *self;
-        if let Some(view) = views.get_mut(current_view) {
-            view.render(term.stdout(), styles)?;
-            if let Err(e) = term.stdout().flush() {
-                error!("failed to flush stdout: {}", e);
+        let view_size = self.get_view_size();
+        {
+            let Tui {
+                ref mut views,
+                ref mut term,
+                ref current_view,
+                ref styles,
+                ..
+            } = *self;
+            if let Some(view) = views.get_mut(current_view) {
+                view.resize(view_size);
+                view.render(term.stdout(), styles)?;
+                if let Err(e) = term.stdout().flush() {
+                    error!("failed to flush stdout: {}", e);
+                }
             }
         }
+        self.render_status_bar();
         Ok(())
+    }
+
+    fn render_status_bar(&mut self) {
+        let Tui {
+            ref mut status_bar,
+            ref mode,
+            ref mut term,
+            ref term_size,
+            ..
+        } = *self;
+        if term_size.1 < 3 {
+            return;
+        }
+        status_bar.set_mode(*mode);
+        status_bar.set_position(term_size.1 - 1);
+        status_bar.set_width(term_size.0);
+        status_bar.render(term.stdout());
     }
 }
 

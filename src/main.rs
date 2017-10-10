@@ -21,6 +21,8 @@ mod tui;
 mod errors;
 mod terminal;
 mod view;
+mod status_bar;
+mod mode;
 
 use futures::{Future, Stream};
 use log::LogLevelFilter;

@@ -61,7 +61,14 @@ impl View {
         Ok(())
     }
 
+    pub fn size(&self) -> u16 {
+        self.window.size()
+    }
+
     pub fn resize(&mut self, height: u16) {
+        if height == self.size() {
+            return;
+        }
         self.window.resize(height);
         self.update_window();
         self.client.scroll(
