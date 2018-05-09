@@ -1,14 +1,14 @@
-use std::io::Write;
 use std::collections::HashMap;
+use std::io::Write;
 
-use termion::event::{Event, Key, MouseButton, MouseEvent};
 use termion::clear::CurrentLine as ClearLine;
 use termion::cursor::Goto;
+use termion::event::{Event, Key, MouseButton, MouseEvent};
 use xrl::{Line, LineCache, Style, Update};
 
-use super::window::Window;
-use super::style::{reset_style, set_style};
 use super::client::Client;
+use super::style::{reset_style, set_style};
+use super::window::Window;
 
 use super::errors::*;
 
@@ -115,7 +115,18 @@ impl View {
                 Key::Char(c) => self.client.insert(c),
                 Key::Ctrl(c) => match c {
                     'w' => self.client.save(self.file.as_ref().unwrap()),
+                    'f' => self.client.right(),
+                    'b' => self.client.left(),
+                    'a' => self.client.home(),
+                    'e' => self.client.end(),
+                    'v' => self.client.page_down(),
+                    'n' => self.client.down(),
+                    'p' => self.client.up(),
                     _ => error!("un-handled input ctrl+{}", c),
+                },
+                Key::Alt(c) => match c {
+                    'v' => self.client.page_up(),
+                    _ => error!("un-handled input alt+{}", c),
                 },
                 Key::Backspace => self.client.backspace(),
                 Key::Delete => self.client.delete(),
